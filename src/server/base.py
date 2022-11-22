@@ -48,7 +48,11 @@ class ServerBase:
         )
         fix_random_seed(self.args.seed)
         self.backbone = LeNet5
-        self.logger = Console(record=True, log_path=False, log_time=False,)
+        self.logger = Console(
+            record=True,
+            log_path=False,
+            log_time=False,
+        )
         self.client_id_indices, self.client_num_in_total = get_client_id_indices(
             self.args.dataset
         )
@@ -67,7 +71,9 @@ class ServerBase:
             if os.path.exists(self.temp_dir / "epoch.pkl"):
                 with open(self.temp_dir / "epoch.pkl", "rb") as f:
                     passed_epoch = pickle.load(f)
-                self.logger.log(f"Have run {passed_epoch} epochs already.",)
+                self.logger.log(
+                    f"Have run {passed_epoch} epochs already.",
+                )
         else:
             self.global_params_dict = OrderedDict(
                 _dummy_model.state_dict(keep_vars=True)
@@ -77,7 +83,8 @@ class ServerBase:
         self.logger.log("Backbone:", _dummy_model)
 
         self.trainer: ClientBase = None
-        self.training_acc = [[] for _ in range(self.global_epochs)]
+        self.num_correct = [[] for _ in range(self.global_epochs)]
+        self.num_samples = [[] for _ in range(self.global_epochs)]
 
     def train(self):
         self.logger.log("=" * 30, "TRAINING", "=" * 30, style="bold green")
@@ -108,12 +115,14 @@ class ServerBase:
                 )
 
                 res_cache.append(res)
-                self.training_acc[E].append(stats["acc_before"])
+                self.num_correct[E].append(stats["correct"])
+                self.num_samples[E].append(stats["size"])
             self.aggregate(res_cache)
 
             if E % self.args.save_period == 0:
                 torch.save(
-                    self.global_params_dict, self.temp_dir / "global_model.pt",
+                    self.global_params_dict,
+                    self.temp_dir / "global_model.pt",
                 )
                 with open(self.temp_dir / "epoch.pkl", "wb") as f:
                     pickle.dump(E, f)
@@ -139,7 +148,8 @@ class ServerBase:
     def test(self) -> None:
         self.logger.log("=" * 30, "TESTING", "=" * 30, style="bold blue")
         all_loss = []
-        all_acc = []
+        all_correct = []
+        all_samples = []
         for client_id in track(
             self.client_id_indices,
             "[bold blue]Testing...",
@@ -148,60 +158,39 @@ class ServerBase:
         ):
             client_local_params = clone_parameters(self.global_params_dict)
             stats = self.trainer.test(
-                client_id=client_id, model_params=client_local_params,
+                client_id=client_id,
+                model_params=client_local_params,
             )
-
-            self.logger.log(
-                f"client [{client_id}]  [red]loss: {stats['loss']:.4f}    [magenta]accuracy: {stats['acc']:.2f}%"
-            )
+            # self.logger.log(
+            #     f"client [{client_id}]  [red]loss: {(stats['loss'] / stats['size']):.4f}    [magenta]accuracy: {stats(['correct'] / stats['size'] * 100):.2f}%"
+            # )
             all_loss.append(stats["loss"])
-            all_acc.append(stats["acc"])
-
+            all_correct.append(stats["correct"])
+            all_samples.append(stats["size"])
         self.logger.log("=" * 20, "RESULTS", "=" * 20, style="bold green")
         self.logger.log(
             "loss: {:.4f}    accuracy: {:.2f}%".format(
-                sum(all_loss) / len(all_loss), sum(all_acc) / len(all_acc),
+                sum(all_loss) / sum(all_samples),
+                sum(all_correct) / sum(all_samples) * 100.0,
             )
         )
 
-        # check convergence
-        epoch_to_50 = 10000000
-        epoch_to_60 = 10000000
-        epoch_to_70 = 10000000
-        epoch_to_80 = 10000000
-        for E, acc_list in enumerate(self.training_acc):
-            avg_acc = sum(acc_list) / len(acc_list)
-            if avg_acc >= 80 and epoch_to_80 > E:
-                self.logger.log(
-                    "{} achieved 80% accuracy({:.2f}%) at epoch: {}".format(
-                        self.algo, avg_acc, E
+        acc_range = [90.0, 80.0, 70.0, 60.0, 50.0, 40.0, 30.0, 20.0, 10.0]
+        min_acc_idx = 10
+        max_acc = 0
+        for E, (corr, n) in enumerate(zip(self.num_correct, self.num_samples)):
+            avg_acc = sum(corr) / sum(n) * 100.0
+            for i, acc in enumerate(acc_range):
+                if avg_acc >= acc and avg_acc > max_acc:
+                    self.logger.log(
+                        "{} achieved {}% accuracy({:.2f}%) at epoch: {}".format(
+                            self.algo, acc, avg_acc, E
+                        )
                     )
-                )
-                epoch_to_80 = E
-
-            elif avg_acc >= 70 and epoch_to_70 > E and epoch_to_70 >= epoch_to_80:
-                self.logger.log(
-                    "{} achieved 70% accuracy({:.2f}%) at epoch: {}".format(
-                        self.algo, avg_acc, E
-                    )
-                )
-                epoch_to_70 = E
-
-            elif avg_acc >= 60 and epoch_to_60 > E and epoch_to_60 >= epoch_to_70:
-                self.logger.log(
-                    "{} achieved 60% accuracy({:.2f}%) at epoch: {}".format(
-                        self.algo, avg_acc, E
-                    )
-                )
-                epoch_to_60 = E
-
-            elif avg_acc >= 50 and epoch_to_50 > E and epoch_to_50 >= epoch_to_60:
-                self.logger.log(
-                    "{} achieved 50% accuracy({:.2f}%) at epoch: {}".format(
-                        self.algo, avg_acc, E
-                    )
-                )
-                epoch_to_50 = E
+                    max_acc = avg_acc
+                    min_acc_idx = i
+                    break
+            acc_range = acc_range[:min_acc_idx]
 
     def run(self):
         self.logger.log("Arguments:", dict(self.args._get_kwargs()))

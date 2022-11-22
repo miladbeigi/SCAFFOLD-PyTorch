@@ -12,7 +12,8 @@ _ARGS_DICT = json.load(open(_CURRENT_DIR.parent / "args.json", "r"))
 
 
 def get_dataset(
-    dataset: str, client_id: int, batch_size=32, valset_ratio=0.1, testset_ratio=0.1,
+    dataset: str,
+    client_id: int,
 ) -> Dict[str, Subset]:
     client_num_in_each_pickles = _ARGS_DICT["client_num_in_each_pickles"]
     pickles_dir = _CURRENT_DIR.parent / dataset / "pickles"
@@ -25,12 +26,9 @@ def get_dataset(
     with open(pickle_path, "rb") as f:
         subset = pickle.load(f)
     client_dataset = subset[client_id % client_num_in_each_pickles]
-    val_samples_num = int(len(client_dataset) * valset_ratio)
-    test_samples_num = int(len(client_dataset) * testset_ratio)
-    train_samples_num = len(client_dataset) - val_samples_num - test_samples_num
-    trainset, valset, testset = random_split(
-        client_dataset, [train_samples_num, val_samples_num, test_samples_num]
-    )
+    trainset = client_dataset["train"]
+    valset = client_dataset["val"]
+    testset = client_dataset["test"]
     return {"train": trainset, "val": valset, "test": testset}
 
 

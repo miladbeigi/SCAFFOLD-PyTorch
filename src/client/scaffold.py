@@ -14,8 +14,6 @@ class SCAFFOLDClient(ClientBase):
         backbone: torch.nn.Module,
         dataset: str,
         batch_size: int,
-        valset_ratio: float,
-        testset_ratio: float,
         local_epochs: int,
         local_lr: float,
         logger: Console,
@@ -25,8 +23,6 @@ class SCAFFOLDClient(ClientBase):
             backbone,
             dataset,
             batch_size,
-            valset_ratio,
-            testset_ratio,
             local_epochs,
             local_lr,
             logger,
@@ -40,7 +36,9 @@ class SCAFFOLDClient(ClientBase):
         client_id: int,
         model_params: OrderedDict[str, torch.Tensor],
         c_global,
+        evaluate=True,
         verbose=True,
+        use_valset=True,
     ):
         self.client_id = client_id
         self.set_parameters(model_params)
@@ -51,11 +49,13 @@ class SCAFFOLDClient(ClientBase):
             self.c_diff = []
             for c_l, c_g in zip(self.c_local[self.client_id], c_global):
                 self.c_diff.append(-c_l + c_g)
-        _, stats = self._log_while_training(evaluate=True, verbose=verbose)()
+        _, stats = self._log_while_training(evaluate, verbose, use_valset)()
         # update local control variate
         with torch.no_grad():
-            trainable_parameters = filter(lambda p: p.requires_grad, model_params.values())
-            
+            trainable_parameters = filter(
+                lambda p: p.requires_grad, model_params.values()
+            )
+
             if self.client_id not in self.c_local.keys():
                 self.c_local[self.client_id] = [
                     torch.zeros_like(param, device=self.device)
@@ -100,13 +100,3 @@ class SCAFFOLDClient(ClientBase):
             for param, c_d in zip(self.model.parameters(), self.c_diff):
                 param.grad += c_d.data
             self.optimizer.step()
-
-    def test(
-        self, client_id: int, model_params: OrderedDict[str, torch.Tensor],
-    ):
-        self.client_id = client_id
-        self.set_parameters(model_params)
-        self.get_client_local_dataset()
-        loss, acc = self.evaluate()
-        stats = {"loss": loss, "acc": acc}
-        return stats

@@ -14,6 +14,7 @@ from argparse import ArgumentParser
 
 import numpy as np
 import torch
+from torch.utils.data import random_split
 from torchvision import transforms
 from torchvision.datasets import CIFAR10, CIFAR100, EMNIST, MNIST, FashionMNIST
 
@@ -44,7 +45,9 @@ def main(args):
 
     classes_map = None
     transform = transforms.Compose(
-        [transforms.Normalize(MEAN[args.dataset], STD[args.dataset]),]
+        [
+            transforms.Normalize(MEAN[args.dataset], STD[args.dataset]),
+        ]
     )
     target_transform = None
 
@@ -72,8 +75,15 @@ def main(args):
             transform=transforms.ToTensor(),
         )
     else:
-        trainset = ori_dataset(_DATASET_ROOT, train=True, download=True,)
-        testset = ori_dataset(_DATASET_ROOT, train=False,)
+        trainset = ori_dataset(
+            _DATASET_ROOT,
+            train=True,
+            download=True,
+        )
+        testset = ori_dataset(
+            _DATASET_ROOT,
+            train=False,
+        )
     concat_datasets = [trainset, testset]
     if args.alpha > 0:  # NOTE: Dirichlet(alpha)
         all_datasets, stats = dirichlet_distribution(
@@ -98,7 +108,17 @@ def main(args):
     for subset_id, client_id in enumerate(
         range(0, len(all_datasets), args.client_num_in_each_pickles)
     ):
-        subset = all_datasets[client_id : client_id + args.client_num_in_each_pickles]
+        subset = []
+        for dataset in all_datasets[
+            client_id : client_id + args.client_num_in_each_pickles
+        ]:
+            num_val_samples = int(len(dataset) * args.valset_ratio)
+            num_test_samples = int(len(dataset) * args.test_ratio)
+            num_train_samples = len(dataset) - num_val_samples - num_test_samples
+            train, val, test = random_split(
+                dataset, [num_train_samples, num_val_samples, num_test_samples]
+            )
+            subset.append({"train": train, "val": val, "test": test})
         with open(_PICKLES_DIR / str(subset_id) + ".pkl", "wb") as f:
             pickle.dump(subset, f)
 
@@ -122,7 +142,10 @@ def main(args):
             zip(clients_4_train, list(stats.values())[:train_clients_num])
         )
         test_clients_stats = dict(
-            zip(clients_4_test, list(stats.values())[train_clients_num:],)
+            zip(
+                clients_4_test,
+                list(stats.values())[train_clients_num:],
+            )
         )
 
         with open(_CURRENT_DIR.parent / args.dataset / "all_stats.json", "w") as f:
@@ -132,7 +155,11 @@ def main(args):
         client_id_indices = [i for i in range(client_num_in_total)]
         with open(_PICKLES_DIR / "seperation.pkl", "wb") as f:
             pickle.dump(
-                {"id": client_id_indices, "total": client_num_in_total,}, f,
+                {
+                    "id": client_id_indices,
+                    "total": client_num_in_total,
+                },
+                f,
             )
         with open(_CURRENT_DIR.parent / args.dataset / "all_stats.json", "w") as f:
             json.dump(stats, f)
@@ -149,9 +176,29 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dataset",
         type=str,
-        choices=["mnist", "cifar10", "cifar100", "emnist", "fmnist",],
+        choices=[
+            "mnist",
+            "cifar10",
+            "cifar100",
+            "emnist",
+            "fmnist",
+        ],
         default="mnist",
     )
+
+    parser.add_argument("--client_num_in_total", type=int, default=10)
+    parser.add_argument(
+        "--fraction", type=float, default=0.9, help="Propotion of train clients"
+    )
+    parser.add_argument("--valset_ratio", type=float, default=0.1)
+    parser.add_argument("--test_ratio", type=float, default=0.1)
+    parser.add_argument(
+        "--classes",
+        type=int,
+        default=-1,
+        help="Num of classes that one client's data belong to.",
+    )
+    parser.add_argument("--seed", type=int, default=int(time.time()))
     ################# Dirichlet distribution only #################
     parser.add_argument(
         "--alpha",
@@ -160,17 +207,6 @@ if __name__ == "__main__":
         help="Only for controling data hetero degree while performing Dirichlet partition.",
     )
     ###############################################################
-    parser.add_argument("--client_num_in_total", type=int, default=10)
-    parser.add_argument(
-        "--fraction", type=float, default=0.9, help="Propotion of train clients"
-    )
-    parser.add_argument(
-        "--classes",
-        type=int,
-        default=-1,
-        help="Num of classes that one client's data belong to.",
-    )
-    parser.add_argument("--seed", type=int, default=int(time.time()))
 
     ################# For EMNIST only #####################
     parser.add_argument(
@@ -184,7 +220,7 @@ if __name__ == "__main__":
         "--type", type=str, choices=["sample", "user"], default="sample"
     )
     parser.add_argument("--client_num_in_each_pickles", type=int, default=10)
-    parser.add_argument("--root", type=str, default=None)
+    parser.add_argument("--root", type=str, default="/root/repos/python/mine/datasets")
     args = parser.parse_args()
     main(args)
     args_dict = dict(args._get_kwargs())

@@ -18,8 +18,6 @@ class SCAFFOLDServer(ServerBase):
             backbone=self.backbone(self.args.dataset),
             dataset=self.args.dataset,
             batch_size=self.args.batch_size,
-            valset_ratio=self.args.valset_ratio,
-            testset_ratio=self.args.testset_ratio,
             local_epochs=self.args.local_epochs,
             local_lr=self.args.local_lr,
             logger=self.logger,
@@ -60,14 +58,16 @@ class SCAFFOLDServer(ServerBase):
                     c_global=self.c_global,
                     verbose=(E % self.args.verbose_gap) == 0,
                 )
-
                 res_cache.append(res)
-                self.training_acc[E].append(stats["acc_before"])
+
+                self.num_correct[E].append(stats["correct"])
+                self.num_samples[E].append(stats["size"])
             self.aggregate(res_cache)
 
             if E % self.args.save_period == 0 and self.args.save_period > 0:
                 torch.save(
-                    self.global_params_dict, self.temp_dir / "global_model.pt",
+                    self.global_params_dict,
+                    self.temp_dir / "global_model.pt",
                 )
                 with open(self.temp_dir / "epoch.pkl", "wb") as f:
                     pickle.dump(E, f)

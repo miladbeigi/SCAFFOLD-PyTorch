@@ -23,8 +23,6 @@ class ClientBase:
         backbone: torch.nn.Module,
         dataset: str,
         batch_size: int,
-        valset_ratio: float,
-        testset_ratio: float,
         local_epochs: int,
         local_lr: float,
         logger: Console,
@@ -43,8 +41,6 @@ class ClientBase:
         )
         self.dataset = dataset
         self.batch_size = batch_size
-        self.valset_ratio = valset_ratio
-        self.testset_ratio = testset_ratio
         self.local_epochs = local_epochs
         self.local_lr = local_lr
         self.criterion = torch.nn.CrossEntropyLoss()
@@ -54,31 +50,30 @@ class ClientBase:
     @torch.no_grad()
     def evaluate(self, use_valset=True):
         self.model.eval()
-        size = 0
+        criterion = torch.nn.CrossEntropyLoss(reduction="sum")
         loss = 0
         correct = 0
         dataloader = DataLoader(self.valset if use_valset else self.testset, 32)
         for x, y in dataloader:
             x, y = x.to(self.device), y.to(self.device)
             logits = self.model(x)
-            loss += self.criterion(logits, y)
+            loss += criterion(logits, y)
             pred = torch.softmax(logits, -1).argmax(-1)
             correct += (pred == y).int().sum()
-            size += y.size(-1)
-        acc = correct / size * 100.0
-        loss = loss / len(self.testset)
-        return loss.item(), acc.item()
+        return loss.item(), correct.item()
 
     def train(
         self,
         client_id: int,
         model_params: OrderedDict[str, torch.Tensor],
-        verbose=True,
+        evaluate=True,
+        verbose=False,
+        use_valset=True,
     ) -> Tuple[List[torch.Tensor], int]:
         self.client_id = client_id
         self.set_parameters(model_params)
         self.get_client_local_dataset()
-        res, stats = self._log_while_training(evaluate=True, verbose=verbose)()
+        res, stats = self._log_while_training(evaluate, verbose, use_valset)()
         return res, stats
 
     def _train(self):
@@ -96,53 +91,55 @@ class ClientBase:
         )
 
     def test(
-        self, client_id: int, model_params: OrderedDict[str, torch.Tensor],
+        self,
+        client_id: int,
+        model_params: OrderedDict[str, torch.Tensor],
     ):
         self.client_id = client_id
         self.set_parameters(model_params)
         self.get_client_local_dataset()
-        loss, acc = self.evaluate()
-        stats = {"loss": loss, "acc": acc}
+        loss, correct = self.evaluate()
+        stats = {"loss": loss, "correct": correct, "size": len(self.testset)}
         return stats
 
     def get_client_local_dataset(self):
         datasets = get_dataset(
             self.dataset,
             self.client_id,
-            self.batch_size,
-            self.valset_ratio,
-            self.testset_ratio,
         )
         self.trainset = datasets["train"]
         self.valset = datasets["val"]
         self.testset = datasets["test"]
 
-    def _log_while_training(self, evaluate=True, verbose=False):
+    def _log_while_training(self, evaluate=True, verbose=False, use_valset=True):
         def _log_and_train(*args, **kwargs):
             loss_before = 0
             loss_after = 0
-            acc_before = 0
-            acc_after = 0
+            correct_before = 0
+            correct_after = 0
+            num_samples = len(self.valset)
             if evaluate:
-                loss_before, acc_before = self.evaluate()
+                loss_before, correct_before = self.evaluate(use_valset)
 
             res = self._train(*args, **kwargs)
 
             if evaluate:
-                loss_after, acc_after = self.evaluate()
+                loss_after, correct_after = self.evaluate(use_valset)
 
             if verbose:
                 self.logger.log(
                     "client [{}]   [bold red]loss: {:.4f} -> {:.4f}    [bold blue]accuracy: {:.2f}% -> {:.2f}%".format(
-                        self.client_id, loss_before, loss_after, acc_before, acc_after
+                        self.client_id,
+                        loss_before / num_samples,
+                        loss_after / num_samples,
+                        correct_before / num_samples * 100.0,
+                        correct_after / num_samples * 100.0,
                     )
                 )
 
             stats = {
-                "loss_before": loss_before,
-                "loss_after": loss_after,
-                "acc_before": acc_before,
-                "acc_after": acc_after,
+                "correct": correct_before,
+                "size": num_samples,
             }
             return res, stats
 
@@ -166,4 +163,3 @@ class ClientBase:
         ).long()
         data, targets = self.trainset.dataset[indices]
         return data.to(self.device), targets.to(self.device)
-
