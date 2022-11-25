@@ -30,6 +30,12 @@ You can check `./src/config/util.py` for all hyperparameters detail.
 
 ## Result
 
+❗NOTE: The dataset settings, hyperparameters, and model backbone in this repo are not the same as in the SCAFFOLD paper. So the result below doesn't mean anything. 
+
+This repo is just for showing the process of SCAFFOLD.
+
+If something wrong you find in any alogorithms' process in this repo, just let me know. 🤗 
+
 Some stats about convergence speed are shown below.
 
 `--dataset`: `emnist`. Splitted by Dirchlet(0.5)
@@ -43,6 +49,8 @@ Some stats about convergence speed are shown below.
 `--client_num_per_round`: `2`
 
 `--local_lr`: `1e-2`
+
+`--seed`: `17`
 
 
 | Algo     | Epoch to 50% Acc | Epoch to 60% Acc | Epoch to 70% Acc | Epoch to 80% Acc | Test Acc |
