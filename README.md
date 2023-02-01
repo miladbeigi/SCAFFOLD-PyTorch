@@ -6,6 +6,7 @@ I further implement FedAvg and FedProx for you.🤗
 
 For simulating Non-I.I.D scenario, the dataset can be splitted based on Dirchlet distribution or assign random classes to each client.
 
+Note that I have recently released a [benchmark of federated learning](https://github.com/KarhouTam/FL-bench) that includes this method and many ohter baselines. Welcome to check my benchmark and star it! 🤗
 
 ## Preprocess dataset
   
