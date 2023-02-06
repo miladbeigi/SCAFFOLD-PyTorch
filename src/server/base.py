@@ -16,7 +16,7 @@ import sys
 
 sys.path.append(_CURRENT_DIR.parent)
 
-from config.models import LeNet5
+from config.models import LeNet5, ResNet20
 from config.util import (
     DATA_DIR,
     LOG_DIR,
@@ -47,7 +47,7 @@ class ServerBase:
             "cuda" if self.args.gpu and torch.cuda.is_available() else "cpu"
         )
         fix_random_seed(self.args.seed)
-        self.backbone = LeNet5
+        self.backbone = ResNet20
         self.logger = Console(
             record=True,
             log_path=False,
@@ -60,7 +60,7 @@ class ServerBase:
         if not os.path.isdir(self.temp_dir):
             os.makedirs(self.temp_dir)
 
-        _dummy_model = self.backbone(self.args.dataset).to(self.device)
+        _dummy_model = self.backbone(0.01, [3, 3, 3] , 100, self.device).to(self.device)
         passed_epoch = 0
         self.global_params_dict: OrderedDict[str : torch.Tensor] = None
         if os.listdir(self.temp_dir) != [] and self.args.save_period > 0:

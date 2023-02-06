@@ -15,7 +15,7 @@ class SCAFFOLDServer(ServerBase):
         super(SCAFFOLDServer, self).__init__(get_args(), "SCAFFOLD")
 
         self.trainer = SCAFFOLDClient(
-            backbone=self.backbone(self.args.dataset),
+            backbone=self.backbone(0.01, [3, 3, 3] , 100, self.device),
             dataset=self.args.dataset,
             batch_size=self.args.batch_size,
             local_epochs=self.args.local_epochs,
@@ -25,7 +25,7 @@ class SCAFFOLDServer(ServerBase):
         )
         self.c_global = [
             torch.zeros_like(param).to(self.device)
-            for param in self.backbone(self.args.dataset).parameters()
+            for param in self.backbone(0.01, [3, 3, 3] , 100, self.device).parameters()
         ]
         self.global_lr = 1.0
         self.training_acc = [[] for _ in range(self.global_epochs)]

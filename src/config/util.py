@@ -52,7 +52,7 @@ def get_args() -> Namespace:
         "--dataset",
         type=str,
         choices=["mnist", "cifar10", "cifar100", "emnist", "fmnist"],
-        default="mnist",
+        default="cifar10",
     )
     parser.add_argument("--batch_size", type=int, default=-1)
     parser.add_argument("--gpu", type=int, default=1)
